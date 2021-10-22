@@ -6,13 +6,51 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <time.h>
 #define handle_error(msg) \
     do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
 #define BUFFER_LIMIT 1500
 #define EVER ;;
+#define random_max 10000
 
 
+/**
+ * 
+ * Return socket number
+ * 
+ * */
+int SYN(int serv_socket, struct sockaddr* client){
+
+
+	srand(time(NULL));   // Initialization, should only be called once.
+	int r = rand() % random_max + 3000;      // Returns a pseudo-random integer between 0 and RAND_MAX.
+	printf("tentative de SYN de la part du client");
+	// Allocates storage
+	char *syn_ack = (char*)malloc(15 * sizeof(char));
+	sprintf(syn_ack, "SYN_ACK:%d", r);
+	if (sendto(serv_socket, syn_ack, (strlen(syn_ack)+1), 0,(struct sockaddr *)client, sizeof(*client)) < 0){
+			handle_error("sendto()");
+		}
+	char message[BUFFER_LIMIT];
+
+	int client_address_size = sizeof(*client);
+	   if(recvfrom(serv_socket, message, sizeof(message), 0, (struct sockaddr *) &client,
+	            (unsigned int *) &client_address_size) <0)
+	   {
+	       handle_error("recvfrom()");
+	       exit(4);
+	   }
+
+	   if(strcmp("ACK", message) == 0){
+	   	return 0;
+	   }
+	   else{
+	   	return -1;
+	   }
+
+	
+}
 int main(int argc, char *argv[]){
 
    int s, namelen, client_address_size;
@@ -73,6 +111,10 @@ int main(int argc, char *argv[]){
 	   {
 	       handle_error("recvfrom()");
 	       exit(4);
+	   }
+
+	   if(strcmp("SYN", buf) == 0){
+	   	SYN(s, (struct sockaddr *) &client);
 	   }
 	   /*
 	    * Print the message and the name of the client.

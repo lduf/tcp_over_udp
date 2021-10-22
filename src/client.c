@@ -13,6 +13,37 @@
 #define handle_error(msg) \
     do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
+int conn(int s, struct sockaddr_in server){
+	/**
+ * 
+ * 
+ * CONNECTION PROCESS
+ * 
+ **/
+	char buf[BUFFER_LIMIT];
+   strcpy(buf,"SYN");
+   if (sendto(s, buf, (strlen(buf)+1), 0,(struct sockaddr *)&server, sizeof(server)) < 0){
+			handle_error("sendto()");
+		}
+
+	int server_addr_len = sizeof(server);
+	if(recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr *) &server,
+	            (unsigned int *) &server_addr_len) <0)
+	   {
+	       handle_error("recvfrom()");
+	       exit(4);
+	   }
+	strtok(buf, ":");
+	int port_ack = atoi(strtok(NULL, ":"));
+	
+	strcpy(buf,"ACK");
+   if (sendto(s, buf, (strlen(buf)+1), 0,(struct sockaddr *)&server, sizeof(server)) < 0){
+			handle_error("sendto()");
+	}
+
+	return port_ack;
+}
+
 int main(int argc, char *argv[]){
 
    int s;
@@ -46,6 +77,15 @@ int main(int argc, char *argv[]){
    server.sin_port        = port;               /* Server Port        */
    server.sin_addr.s_addr = inet_addr(argv[1]); /* Server's Address   */
 
+   int port_ack = conn(s, (struct sockaddr_in) server);
+   printf("Je dois me connecter au port %d\n", port_ack);
+
+		/**
+		 * 
+		 * CONNECTED
+		 * 
+		 * */ 
+
    while(strcmp("STOP\n",buf) != 0){
 		memset((char*)buf, 0, sizeof(buf)); // permet de bien avoir une adresse vide et pas se taper ce qu'on avait en mémoire avant
 		printf("Texte à envoyer ? STOP pour terminer\n");
@@ -53,8 +93,7 @@ int main(int argc, char *argv[]){
 		fgets(buf, sizeof(buf), stdin);  // read string
 		/* Send the message in buf to the server */
 		if (sendto(s, buf, (strlen(buf)+1), 0,(struct sockaddr *)&server, sizeof(server)) < 0){
-		       handle_error("sendto()");
-		       exit(2);
+			handle_error("sendto()");
 		}
 		printf("Message sent\n");
 

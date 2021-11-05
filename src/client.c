@@ -6,6 +6,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include "includes/compareString.h"
 
 #define BUFFER_LIMIT 1500
 #define EVER ;;
@@ -14,18 +15,21 @@
     do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
 int conn(int s, struct sockaddr_in server){
+	int port_ack = -1;
 	/**
  * 
  * 
  * CONNECTION PROCESS
  * 
  **/
+
+	printf("Initialisation de la connection ... \n");
 	char buf[BUFFER_LIMIT];
    strcpy(buf,"SYN");
    if (sendto(s, buf, (strlen(buf)+1), 0,(struct sockaddr *)&server, sizeof(server)) < 0){
 			handle_error("sendto()");
 		}
-
+	printf("SYN sent \n");
 	int server_addr_len = sizeof(server);
 	if(recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr *) &server,
 	            (unsigned int *) &server_addr_len) <0)
@@ -33,16 +37,23 @@ int conn(int s, struct sockaddr_in server){
 	       handle_error("recvfrom()");
 	       exit(4);
 	   }
-	strtok(buf, ":");
-	int port_ack = atoi(strtok(NULL, ":"));
-	
-	strcpy(buf,"ACK");
-   if (sendto(s, buf, (strlen(buf)+1), 0,(struct sockaddr *)&server, sizeof(server)) < 0){
-			handle_error("sendto()");
+	if(compareString(buf, "^SYN_ACK:[0-9]+$") == 1){
+		strtok(buf, ":");
+		port_ack = atoi(strtok(NULL, ":"));
+		printf("SYNACK and new port number received\n");
+		strcpy(buf,"ACK");
+	   if (sendto(s, buf, (strlen(buf)+1), 0,(struct sockaddr *)&server, sizeof(server)) < 0){
+				handle_error("sendto()");
+		}
+		printf("ACK sent\n");
+	}else{
+		printf("%s", buf);
+		//handle_error("Error during SYN");
 	}
-
 	return port_ack;
 }
+
+
 
 int main(int argc, char *argv[]){
 
@@ -92,6 +103,16 @@ int main(int argc, char *argv[]){
 		//scanf("%s", message);
 		fgets(buf, sizeof(buf), stdin);  // read string
 		/* Send the message in buf to the server */
+		//compare if the message is STOP
+		if(strcmp("STOP\n",buf) == 0){
+			//assing the message to the buffer
+			strcpy(buf,"LEAVE");
+			if (sendto(s, buf, (strlen(buf)+1), 0,(struct sockaddr *)&server, sizeof(server)) < 0){
+				handle_error("sendto()");
+			}
+			printf("Disconnection sent\n");
+			break;
+		}
 		if (sendto(s, buf, (strlen(buf)+1), 0,(struct sockaddr *)&server, sizeof(server)) < 0){
 			handle_error("sendto()");
 		}

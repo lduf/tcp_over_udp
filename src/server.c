@@ -7,6 +7,8 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <time.h>
+#include <signal.h>
+
 
 #include "includes/compareString.h"
 #include "includes/liste.h"
@@ -19,16 +21,18 @@
 #define MAX_CONN 2
 
 
+
 /**
- * 
+ * @param LISTE *portList : liste des ports
+ * @param int serv_socket : port du serveur
+ * @param sockaddr sockaddr* client : info client client
  * Return socket number
  * 
  * */
 int SYN(LISTE *portList, int serv_socket, struct sockaddr* client){
 	printf("new SYN\n");
-
 	int s;
-	 /*
+	/*
     * Create a datagram socket in the internet domain and use the
     * default protocol (UDP).
     */
@@ -40,6 +44,7 @@ int SYN(LISTE *portList, int serv_socket, struct sockaddr* client){
 
    int port;
    struct sockaddr_in serv;
+   memset(&serv, 0, sizeof(serv));
    serv.sin_family      = AF_INET;  /* Server is in Internet Domain */
    serv.sin_addr.s_addr = INADDR_ANY;/* Server's Internet Address   */
 
@@ -54,7 +59,6 @@ int SYN(LISTE *portList, int serv_socket, struct sockaddr* client){
    addToList(portList, port);
    linkSocketToPort(portList, s, port);
    linkClientToPort(portList, (struct sockaddr_in *) client, port);
-
 
 	// Allocates storage
 	char *syn_ack = (char*)malloc(16 * sizeof(char));
@@ -83,11 +87,16 @@ int SYN(LISTE *portList, int serv_socket, struct sockaddr* client){
 	   }
 }
 
-int leave(LISTE *portList, int port){
+int leave(LISTE *portList, int port, int socket){
 	//disconnect the client from the server
-
-
- return 0;
+		printf("Je dois remove le port %d \n", port);
+		//remove the port from the list
+		removeFromList(portList, port);
+		//affichage de la liste
+		afficherListe(*portList);
+		//close the socket
+		close(socket);
+		return 0;
 }
 
 void distribute(LISTE lst, int FromSocket, char *msg){
@@ -101,6 +110,66 @@ void distribute(LISTE lst, int FromSocket, char *msg){
 		}
 		lst = lst->suivant;
 	}while(lst != NULL);
+}
+
+/**
+ * @brief this function is used to handle client's request/messages
+ * 
+ * @param int socket : the socket number 
+ * @return void 
+ */
+void handle_client(int socket, LISTE *portList){
+	int client_address_size;
+   	unsigned short port;
+   	struct sockaddr_in client;
+   	char buf[BUFFER_LIMIT];
+
+	 for(EVER){
+	   /*
+	    * Receive a message on socket s in buf  of maximum size 32
+	    * from a client. Because the last two paramters
+	    * are not null, the name of the client will be placed into the
+	    * client data structure and the size of the client address will
+	    * be placed into client_address_size.
+	    */
+	   client_address_size = sizeof(client);
+
+	   if(recvfrom(socket, buf, sizeof(buf), 0, (struct sockaddr *) &client,(unsigned int *) &client_address_size) <0){
+	       handle_error("recvfrom()");
+	   }
+	   if(strcmp("LEAVE", buf) == 0){
+		   printf("Déconnection");
+		   leave(portList, getPortFromSocket(portList, socket), socket);
+		   break;
+	   }
+	   else{
+	   	/*
+	    * Print the message and the name of the client.
+	    * The domain should be the internet domain (AF_INET).
+	    * The port is received in network byte order, so we translate it to
+	    * host byte order before printing it.
+	    * The internet address is received as 32 bits in network byte order
+	    * so we use a utility that converts it to a string printed in
+	    * dotted decimal format for readability.
+	    */
+
+	   //get the client connection port
+		getsockname(socket, (struct sockaddr *) &client, (unsigned int *) &client_address_size);
+		
+		char msg[BUFFER_LIMIT];
+		sprintf(msg,"[%s:%d] : %s \n",
+	       inet_ntoa(client.sin_addr),
+	       ntohs(client.sin_port),
+	       buf
+	       );
+		   //print the messsage received
+	   printf("Message received: %s\n", msg);
+
+	   //	distribute(portList, s, msg);
+	   }
+	}
+	//kill child process
+	kill(getpid(), SIGKILL);
 }
 
 int main(int argc, char *argv[]){
@@ -120,11 +189,11 @@ int main(int argc, char *argv[]){
     * Create a datagram socket in the internet domain and use the
     * default protocol (UDP).
     */
-   if ((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
-   {
+   if ((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0){
        handle_error("socket()");
        exit(1);
    }
+	memset(&server, 0, sizeof(server));	
 
    /*
     * Bind my name to this socket so that clients on the network can
@@ -164,41 +233,15 @@ int main(int argc, char *argv[]){
 	       exit(4);
 	   }
 
+	// On reçoit une demande de connection d'un client sur la socket de connection
 	   if(strcmp("SYN", buf) == 0){
 	   	int next_sock = SYN(&portList, s, (struct sockaddr *) &client);
 	   	afficherListe(portList);
+		   //create child process
+		   if(fork() == 0){
+		   	handle_client(next_sock, &portList);
+		   }
 	   }
-	   else if(strcmp("LEAVE", buf) == 0){
-		   //print je dois leave
-		   printf("Je dois leave\n");
-		   printf("%d\n",port);
-		   leave(&portList, port);
-	   }
-	   else{
-	   	/*
-	    * Print the message and the name of the client.
-	    * The domain should be the internet domain (AF_INET).
-	    * The port is received in network byte order, so we translate it to
-	    * host byte order before printing it.
-	    * The internet address is received as 32 bits in network byte order
-	    * so we use a utility that converts it to a string printed in
-	    * dotted decimal format for readability.
-	    */
-
-	   
-		char msg[BUFFER_LIMIT];
-		sprintf(msg,"[%s:%d] : %s \n",
-	       inet_ntoa(client.sin_addr),
-	       ntohs(client.sin_port),
-	       buf
-	       );
-		   //print the messsage received
-	   printf("Message received: %s\n", msg);
-
-		
-	   //	distribute(portList, s, msg);
-	   }
-	   
 	}
 
    /*
@@ -207,3 +250,4 @@ int main(int argc, char *argv[]){
    close(s);
    return(0);
 }
+

@@ -89,6 +89,7 @@ int main(int argc, char *argv[]){
    server.sin_addr.s_addr = inet_addr(argv[1]); /* Server's Address   */
 
    int port_ack = conn(s, (struct sockaddr_in) server);
+   server.sin_port = htons(port_ack);
    printf("Je dois me connecter au port %d\n", port_ack);
 
 		/**

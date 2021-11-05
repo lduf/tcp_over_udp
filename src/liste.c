@@ -87,15 +87,18 @@ void afficherListe(LISTE liste)
 
 
 /**
- * Remove an portent form the list
+ * @brief Supprime un élément de la liste à partir de son port
  * 
- * 
+ * @param list 
+ * @param port 
+ * @return * Remove*** 
+ *
  * */
-void removeItem(LISTE *list, int i)
+void removeFromList(LISTE *list, int port)
 {
     while ((*list) != NULL)
     {
-        if ((*list)->port == i)
+        if ((*list)->port == port)
         {
             LISTE tmp = *list;
             *list = (*list)->suivant;
@@ -141,3 +144,19 @@ void linkClientToPort(LISTE *pliste, struct sockaddr_in *client, int port){
 }
 
 
+/**
+ * @brief Get the port from the socket number
+ * 
+ * @param LISTE *pliste : the list which contains all informations
+ * @param int socket : the port to which we want to get the socket
+ * @return int the port number
+ */
+int getPortFromSocket(LISTE *pliste, int socket){
+	if((*pliste) == NULL){
+		return -1;
+	}
+	if((*pliste)->socket == socket){
+		return (*pliste)->port;
+	}
+	return getPortFromSocket(&((*pliste)->suivant), socket);
+}

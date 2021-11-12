@@ -57,8 +57,7 @@ int SYN(LISTE *portList, int serv_socket, struct sockaddr* client){
    while(bind(s, (struct sockaddr *)&serv, sizeof(serv)) < 0);
    printf("Mon bind s'est bien déroulé, je veux associer mon port à ma socket dans ma liste\n");
    addToList(portList, port);
-   linkSocketToPort(portList, s, port);
-   linkClientToPort(portList, (struct sockaddr_in *) client, port);
+   setSocketFromPort(portList, s, port);
 
 	// Allocates storage
 	char *syn_ack = (char*)malloc(16 * sizeof(char));
@@ -69,8 +68,7 @@ int SYN(LISTE *portList, int serv_socket, struct sockaddr* client){
 
 	char message[BUFFER_LIMIT];
 	int client_address_size = sizeof(*client);
-	   if(recvfrom(serv_socket, message, sizeof(message), 0, (struct sockaddr *) &client,
-	            (unsigned int *) &client_address_size) <0)
+	   if(recvfrom(serv_socket, message, sizeof(message), 0, (struct sockaddr *) &client,(unsigned int *) &client_address_size) <0)
 	   {
 	       handle_error("recvfrom()");
 	       exit(4);
@@ -87,30 +85,21 @@ int SYN(LISTE *portList, int serv_socket, struct sockaddr* client){
 	   }
 }
 
-int leave(LISTE *portList, int port, int socket){
+int leave(LISTE *portList, int PID){
 	//disconnect the client from the server
+		int port = getPortFromPID(portList, PID);
+		// get the socket from the port
+		int s = getSocketFromPort(portList, port);
 		printf("Je dois remove le port %d \n", port);
 		//remove the port from the list
 		removeFromList(portList, port);
 		//affichage de la liste
 		afficherListe(*portList);
 		//close the socket
-		close(socket);
+		close(s);
 		return 0;
 }
 
-void distribute(LISTE lst, int FromSocket, char *msg){
-	do{
-		if(lst->socket != FromSocket){
-			printf("socket : %d, msg : %s\n", lst->socket, msg);
-			printf("%s\n",lst->client);
-			if (sendto(lst->socket, msg, (strlen(msg)+1), 0,(struct sockaddr *)lst->client, sizeof(lst->client)) < 0){
-				handle_error("sendto()");
-			}
-		}
-		lst = lst->suivant;
-	}while(lst != NULL);
-}
 
 /**
  * @brief this function is used to handle client's request/messages
@@ -118,7 +107,7 @@ void distribute(LISTE lst, int FromSocket, char *msg){
  * @param int socket : the socket number 
  * @return void 
  */
-void handle_client(int socket, LISTE *portList){
+void handle_client(LISTE *portList,int socket){
 	int client_address_size;
    	unsigned short port;
    	struct sockaddr_in client;
@@ -138,8 +127,7 @@ void handle_client(int socket, LISTE *portList){
 	       handle_error("recvfrom()");
 	   }
 	   if(strcmp("LEAVE", buf) == 0){
-		   printf("Déconnection");
-		   leave(portList, getPortFromSocket(portList, socket), socket);
+		   printf("Déconnection demandée");
 		   break;
 	   }
 	   else{
@@ -168,8 +156,29 @@ void handle_client(int socket, LISTE *portList){
 	   //	distribute(portList, s, msg);
 	   }
 	}
-	//kill child process
-	kill(getpid(), SIGKILL);
+}
+
+
+/**
+ * @brief This function create a new child process, associate the pid to the socket, calls the client handler function and wait for the child process to finish, then returns the pid, so the parent process can kill it
+ * 
+ * @param LISTE *portList : liste des ports
+ * @param int used_socket : socket
+ * 
+ *@return int pid : pid of the child process 
+ */
+int child(LISTE *portList, int used_socket){
+	pid_t pid = fork();
+	if(pid == 0){
+		printf("Je suis dans le fils\n");
+		setPidFromSocket(portList, used_socket, getpid());
+		handle_client(portList, used_socket);
+		return getpid();
+	}
+	else if(pid == -1){
+		handle_error("fork()");
+	}
+	return -1;
 }
 
 int main(int argc, char *argv[]){
@@ -215,8 +224,9 @@ int main(int argc, char *argv[]){
        handle_error("bind()");
        exit(2);
    }
-
-   linkSocketToPort(&portList, s, port);
+   
+   setSocketFromPort(&portList, s, port);
+   setPidFromSocket(&portList, s, getpid());
    afficherListe(portList);
    for(EVER){
 	   /*
@@ -238,9 +248,18 @@ int main(int argc, char *argv[]){
 	   	int next_sock = SYN(&portList, s, (struct sockaddr *) &client);
 	   	afficherListe(portList);
 		   //create child process
-		   if(fork() == 0){
-		   	handle_client(next_sock, &portList);
+		   int child_pid = child(&portList, next_sock);
+		   if(child_pid != -1){
+		   		printf("Pid du fils : %d\n", child_pid);
+				printf("Pid du pere : %d\n", getpid());
+				leave(&portList, child_pid);
+				kill(child_pid, SIGKILL);
+				afficherListe(portList);
+				//session est terminée
+				printf("Session du client PID %d terminée\n", child_pid);
 		   }
+
+
 	   }
 	}
 

@@ -9,7 +9,10 @@ int nextUsableInt(LISTE pliste);
 void removeFromList(LISTE *list, int port);
 int viderListe(LISTE *pliste1);
 void addToList(LISTE *pliste, int val);	
-void linkSocketToPort(LISTE *pliste, int socket, int port);
-void linkClientToPort(LISTE *pliste, struct sockaddr_in *client, int port);
-int getPortFromSocket(LISTE *pliste, int port);
+void setSocketFromPort(LISTE *pliste, int socket, int port);
+int getPortFromSocket(LISTE *pliste, int socket);
+int getSocketFromPort(LISTE *pliste, int port);
+int setPidFromSocket(LISTE *pliste, int socket, int pid);
+int getPidFromSocket(LISTE *pliste, int socket);
+int getPortFromPID(LISTE *pliste, int pid);
 #endif

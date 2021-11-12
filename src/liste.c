@@ -169,14 +169,15 @@ int getPortFromSocket(LISTE *pliste, int socket){
  * @param int port : the port to which we want to get the socket
  * @return int the port number
  */
-int getSocketFromPort(LISTE *pliste, int socket){
+int getSocketFromPort(LISTE *pliste, int port){
 	if((*pliste) == NULL){
+		printf("LIST NULL\n");
 		return -1;
 	}
-	if((*pliste)->socket == socket){
-		return (*pliste)->port;
+	if((*pliste)->port == port){
+		return (*pliste)->socket;
 	}
-	return getPortFromSocket(&((*pliste)->suivant), socket);
+	return getSocketFromPort(&((*pliste)->suivant), port);
 }
 
 /**

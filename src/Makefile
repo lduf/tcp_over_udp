@@ -11,8 +11,8 @@ compareString.o : compareString.c includes/compareString.h
 
 liste.o : liste.c includes/liste_type.h includes/liste.h
 	gcc -c -g -Wall liste.c -I /includes -o liste.o
-serveur.o : serveur.c
-	gcc -c -g -Wall seveur.c -o serveur.o
+serveur.o : serveur.c includes/serveur.h
+	gcc -c -g -Wall seveur.c -I /includes -o serveur.o
 
 client.o : client.c
 	gcc -c -g -Wall client.c -o client.o

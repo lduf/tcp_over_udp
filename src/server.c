@@ -1,17 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <string.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <time.h>
-#include <signal.h>
-
-
-#include "includes/compareString.h"
-#include "includes/liste.h"
+#include "includes/server.h"
 #define handle_error(msg) \
     do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
@@ -19,8 +8,8 @@
 #define EVER ;;
 #define random_max 10000
 #define MAX_CONN 2
-
-
+#define LEGAL_PATH_REGEX "^FILE:(.+)\\/([^\\/]+)$"
+#define SEGMENT_SIZE 536
 
 /**
  * @param LISTE *portList : liste des ports
@@ -85,21 +74,110 @@ int SYN(LISTE *portList, int serv_socket, struct sockaddr* client){
 	   }
 }
 
+/**
+ * @brief This function is used to close the socket, and end the connection
+ * 
+ * @param portList 
+ * @param PID 
+ * @return int 
+ */
 int leave(LISTE *portList, int PID){
 	//disconnect the client from the server
 		int port = getPortFromPID(portList, PID);
 		// get the socket from the port
 		int s = getSocketFromPort(portList, port);
+		printf("J'ai la socket %d \n", s);
 		printf("Je dois remove le port %d \n", port);
 		//remove the port from the list
 		removeFromList(portList, port);
 		//affichage de la liste
 		afficherListe(*portList);
 		//close the socket
+		printf("Je ferme la socket %d \n", s);
 		close(s);
 		return 0;
 }
 
+/**
+ * @brief This function returns the content of the given file
+ * 
+ * @param char *fileName : the name of the file
+ * 
+ * @return char* : the content of the file
+ */
+char* getFileContent(char *fileName){
+	if (fileName[strlen(fileName)  - 1] == '\n') fileName[strlen(fileName)  - 1] = '\0';
+	FILE *file = fopen(fileName, "r");
+	if(file == NULL){
+		return NULL;
+	}
+	char *content = malloc(sizeof(char) * getFileSize(fileName));
+	char c;
+	while((c = fgetc(file)) != EOF){
+		sprintf(content, "%s%c",content, c);
+	}
+	fclose(file);
+	return content;
+}
+
+/**
+ * @brief This function return the number of characters in the given file
+ * 
+ * 	@param char *fileName : the name of the file
+ *  @return int : the number of characters in the file
+ */
+int getFileSize(char *fileName){
+	if (fileName[strlen(fileName)  - 1] == '\n') fileName[strlen(fileName) - 1] = '\0';
+	FILE *file = fopen(fileName, "r");
+	if(file == NULL){
+		handle_error("fopen()");
+	}
+	int size = 0;
+	char c;
+	while((c = fgetc(file)) != EOF){
+		size++;
+	}
+	fclose(file);
+	return size;
+}
+
+/**
+ * @brief This function is used to send the file to the client
+ * 
+ * @param int s : the socket of the client
+ * @param char *fileName : the name of the file
+ * @param sockaddr *client : the client's address
+ * @param int client_address_size : the size of the client's address
+ * @return int : the number of characters sent
+ */
+int sendFile(int s, char *fileName, struct sockaddr *client, int client_address_size){
+	char *fileContent = getFileContent(fileName);
+	printf("J'ai le contenu du fichier : %s\n", fileContent);
+	int bytesSent = 0;
+	char *message = malloc(sizeof(char) * SEGMENT_SIZE);
+	int size =  getFileSize(fileName);
+	printf("Taille du fichier %d, soit %d\n",size, size/SEGMENT_SIZE);
+	printf("Je rentre dans le while\n");
+	int packet = 0;
+	while(bytesSent < size){
+		memset(message, 0, sizeof(*message));
+		while (bytesSent < (packet+1)*SEGMENT_SIZE && bytesSent < size){
+			sprintf(message, "%s%c", message, fileContent[bytesSent]);
+			bytesSent +=1 ;
+		}
+		printf("J'ai envoyé le paquet n° : %d : %d bytes\n\n %s\n", packet, bytesSent, message);
+		packet ++;
+		
+	}
+	printf("While done \n");
+	/*
+	int n = sendto(s, fileContent, strlen(fileContent), 0, client, client_address_size);
+	if(n < 0){
+		handle_error("sendto()");
+	}
+	*/
+	return 0;
+}
 
 /**
  * @brief this function is used to handle client's request/messages
@@ -129,6 +207,14 @@ void handle_client(LISTE *portList,int socket){
 	   if(strcmp("LEAVE", buf) == 0){
 		   printf("Déconnection demandée");
 		   break;
+	   }
+	   else if(compareString(buf,LEGAL_PATH_REGEX) == 1){
+	   		char *fileName = malloc(sizeof(char) * strlen(buf));
+			strtok(buf, ":");
+			fileName = strtok(NULL, ":");
+
+			printf("The client send a filepath : %s\n", fileName);
+			sendFile(socket, fileName, (struct sockaddr *) &client, client_address_size);
 	   }
 	   else{
 	   	/*
@@ -181,6 +267,13 @@ int child(LISTE *portList, int used_socket){
 	return -1;
 }
 
+/**
+ * @brief This function is the main function : create the default socket which handle the client SYN/ and call all the required function to process data
+ * 
+ * @param argc 
+ * @param argv 
+ * @return int 
+ */
 int main(int argc, char *argv[]){
 
    int s, namelen, client_address_size;
@@ -188,6 +281,9 @@ int main(int argc, char *argv[]){
    struct sockaddr_in client, server;
    char buf[BUFFER_LIMIT];
    LISTE portList = (LISTE) NULL;
+   LISTE *portListPtr = &portList;
+   portListPtr = mmap(NULL, sizeof *portListPtr, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+   
    if(argc != 2)
    {
       	argv[1] = "3001";
@@ -253,10 +349,11 @@ int main(int argc, char *argv[]){
 		   		printf("Pid du fils : %d\n", child_pid);
 				printf("Pid du pere : %d\n", getpid());
 				leave(&portList, child_pid);
-				kill(child_pid, SIGKILL);
+				//kill(child_pid, SIGKILL);
 				afficherListe(portList);
 				//session est terminée
 				printf("Session du client PID %d terminée\n", child_pid);
+				
 		   }
 
 
